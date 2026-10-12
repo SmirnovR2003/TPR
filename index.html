@@ -1,0 +1,2415 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Транспортная задача: Генератор сетей</title>
+
+    <!-- Зависимости Cytoscape -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+    <script src="https://unpkg.com/webcola@3.4.0/WebCola/cola.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape-cola@2.5.1/cytoscape-cola.min.js"></script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+            overflow-x: hidden;
+        }
+        .container { max-width: 1600px; margin: 0 auto; padding: 20px; }
+        header { text-align: center; padding: 20px 0; }
+        header h1 {
+            font-size: 2em;
+            background: linear-gradient(90deg, #00d2ff, #3a7bd5);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }
+
+        .graphs-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        @media (max-width: 1200px) { .graphs-layout { grid-template-columns: 1fr; } }
+
+        .graph-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 15px;
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+        }
+        .graph-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .graph-header h3 { color: #ccd6f6; font-size: 1.1em; }
+
+        #cyExact, #cyAco {
+            width: 100%;
+            height: 450px;
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .main-layout {
+            display: grid;
+            grid-template-columns: 1fr 470px;
+            gap: 25px;
+        }
+        @media (max-width: 1100px) { .main-layout { grid-template-columns: 1fr; } }
+
+        .card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+        }
+        .card h3 { font-size: 1.2em; margin-bottom: 15px; color: #ccd6f6; }
+
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; font-size: 0.85em; color: #8892b0; margin-bottom: 5px; }
+
+        input[type="number"], select, input[type="range"] {
+            width: 100%;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            color: #fff;
+        }
+
+        .mode-selector {
+            display: flex;
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            padding: 4px;
+            margin-bottom: 15px;
+        }
+        .mode-option {
+            flex: 1;
+            text-align: center;
+            padding: 8px;
+            font-size: 0.8em;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.3s;
+            color: #8892b0;
+            font-weight: 600;
+        }
+        .mode-option.active {
+            background: linear-gradient(135deg, #00d2ff, #3a7bd5);
+            color: white;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .btn-primary { background: linear-gradient(135deg, #00d2ff, #3a7bd5); color: white; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(0, 210, 255, 0.3); }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #ccd6f6;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .btn-secondary:hover { background: rgba(255, 255, 255, 0.15); transform: translateY(-2px); }
+
+        .btn-danger {
+            background: rgba(255, 107, 107, 0.15);
+            color: #ff6b6b;
+            border: 1px solid rgba(255, 107, 107, 0.3);
+        }
+        .btn-danger:hover { background: rgba(255, 107, 107, 0.25); }
+
+        .btn-success {
+            background: rgba(100, 255, 218, 0.15);
+            color: #64ffda;
+            border: 1px solid rgba(100, 255, 218, 0.3);
+        }
+        .btn-success:hover { background: rgba(100, 255, 218, 0.25); }
+
+        .btn-warning {
+            background: rgba(254, 202, 87, 0.15);
+            color: #feca57;
+            border: 1px solid rgba(254, 202, 87, 0.3);
+        }
+        .btn-warning:hover { background: rgba(254, 202, 87, 0.25); }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .metric-box {
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            padding: 10px;
+            text-align: center;
+        }
+        .metric-box .value {
+            font-size: 1.5em;
+            font-weight: 700;
+            color: #00d2ff;
+        }
+        .metric-box.time .value { color: #f5576c; }
+        .metric-box.perf {
+            grid-column: span 2;
+            background: rgba(254, 202, 87, 0.08);
+            border: 1px solid rgba(254, 202, 87, 0.2);
+        }
+        .metric-box.perf .value { color: #feca57; font-size: 1.25em; }
+        .metric-box .sublabel { font-size: 0.7em; color: #8892b0; }
+
+        .costs-grid {
+            display: grid;
+            grid-template-columns: 1.5fr 1fr 1fr 30px;
+            gap: 8px;
+            max-height: 220px;
+            overflow-y: auto;
+            padding-right: 5px;
+            font-size: 0.85em;
+        }
+        .costs-header {
+            display: contents;
+            font-weight: 600;
+            color: #ccd6f6;
+            text-align: center;
+        }
+        .cost-item { display: contents; align-items: center; }
+        .cost-item span { padding: 8px 0; color: #8892b0; }
+        .btn-icon {
+            background: none;
+            border: none;
+            color: #ff6b6b;
+            cursor: pointer;
+            font-size: 1.1em;
+        }
+        .btn-icon:hover { color: #ff4757; }
+
+        .legend {
+            display: flex;
+            gap: 15px;
+            margin-top: 10px;
+            font-size: 0.8em;
+            color: #8892b0;
+            flex-wrap: wrap;
+        }
+        .legend-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+
+        .aco-settings {
+            background: rgba(0,0,0,0.2);
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 5px;
+        }
+        .slider-container label { width: 130px; font-size: 0.8em; }
+        .slider-container input { flex: 1; }
+        .slider-container span { width: 35px; text-align: right; font-size: 0.8em; }
+
+        .routes-list {
+            list-style: none;
+            max-height: 220px;
+            overflow-y: auto;
+        }
+        .routes-list li {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px;
+            margin-bottom: 4px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 4px;
+            border-left: 3px solid #64ffda;
+            font-size: 0.85em;
+        }
+
+        .dyn-input-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .dyn-input-row label {
+            color: #8892b0;
+            font-size: 0.9em;
+            flex: 1;
+        }
+        .dyn-input-row input {
+            width: 70px !important;
+            text-align: center;
+        }
+
+        .error-msg {
+            background: rgba(255, 107, 107, 0.1);
+            border: 1px solid rgba(255, 107, 107, 0.3);
+            color: #ff6b6b;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 0.85em;
+            margin-top: 10px;
+            display: none;
+        }
+
+        details {
+            background: rgba(0,0,0,0.18);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
+            padding: 10px;
+            margin-bottom: 15px;
+        }
+        summary {
+            cursor: pointer;
+            color: #64ffda;
+            font-weight: 600;
+            font-size: 0.95em;
+            margin-bottom: 10px;
+        }
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(180px, 1fr));
+            gap: 10px;
+        }
+        @media (max-width: 700px) {
+            .settings-grid { grid-template-columns: 1fr; }
+        }
+        .setting-group {
+            background: rgba(0,0,0,0.18);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 8px;
+            padding: 10px;
+        }
+        .setting-group h4 {
+            font-size: 0.85em;
+            color: #ccd6f6;
+            margin-bottom: 8px;
+        }
+        .setting-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+        .setting-row label {
+            font-size: 0.78em;
+            color: #8892b0;
+            flex: 1;
+        }
+        .setting-row input {
+            width: 78px;
+            text-align: center;
+        }
+        .btn-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        .info-note {
+            font-size: 0.75em;
+            color: #8892b0;
+            margin-top: 6px;
+        }
+        /* =========================
+           Help icons / tooltips
+           ========================= */
+        .help-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 1px solid #8892b0;
+            color: #8892b0;
+            font-size: 11px;
+            line-height: 1;
+            cursor: help;
+            margin-left: 6px;
+            vertical-align: middle;
+            position: relative;
+            user-select: none;
+            transition: all 0.2s ease;
+        }
+        
+        .help-icon:hover {
+            border-color: #00d2ff;
+            color: #00d2ff;
+            box-shadow: 0 0 10px rgba(0, 210, 255, 0.25);
+        }
+        
+        .help-icon::after {
+            content: attr(data-tip);
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            width: 270px;
+            padding: 9px 11px;
+            background: #16213e;
+            border: 1px solid rgba(0, 210, 255, 0.35);
+            border-radius: 9px;
+            color: #e0e0e0;
+            font-size: 12px;
+            line-height: 1.35;
+            text-align: left;
+            white-space: normal;
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.15s ease, visibility 0.15s ease;
+            z-index: 1000;
+            pointer-events: none;
+        }
+        
+        .help-icon:hover::after {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        @media (max-width: 700px) {
+            .help-icon::after {
+                width: 220px;
+                font-size: 11px;
+            }
+        }
+        
+        /* =========================
+           ACO formula card
+           ========================= */
+        .formula-card {
+            background: rgba(0, 0, 0, 0.22);
+            border: 1px solid rgba(100, 255, 218, 0.18);
+            border-radius: 10px;
+            padding: 12px;
+            margin: 12px 0;
+        }
+        
+        .formula-card h4 {
+            color: #64ffda;
+            margin-bottom: 8px;
+            font-size: 0.95em;
+        }
+        
+        .formula {
+            font-family: 'Cambria Math', 'Times New Roman', serif;
+            font-size: 1.02em;
+            color: #fff;
+            overflow-x: auto;
+            padding: 6px 0;
+            line-height: 1.7;
+        }
+        
+        .formula-note {
+            font-size: 0.78em;
+            color: #8892b0;
+            margin-top: 8px;
+            line-height: 1.45;
+        }
+        
+        .small-help-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚚 Генератор транспортных сетей</h1>
+            <p>Сравнение точного алгоритма и муравьиной колонии с настраиваемыми целочисленными параметрами</p>
+        </header>
+
+        <div class="graphs-layout">
+            <div class="graph-card">
+                <div class="graph-header">
+                    <h3>🎯 Точное решение (LP)</h3>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button class="btn btn-secondary" id="btnFitExact" style="width:auto; padding: 5px 10px; font-size: 0.8em;">
+                            Центрировать
+                        </button>
+                        <button class="btn btn-secondary" id="btnRecalcExact" style="width:auto; padding: 5px 10px; font-size: 0.8em;">
+                            ⏱️ Пересчитать время LP
+                        </button>
+                    </div>
+                </div>
+                <div id="cyExact"></div>
+                <div class="metrics-grid">
+                    <div class="metric-box">
+                        <div class="value" id="exactCost">0</div>
+                        <div class="sublabel">Стоимость</div>
+                    </div>
+                    <div class="metric-box time">
+                        <div class="value" id="exactTime">0</div>
+                        <div class="sublabel">Время (ч)</div>
+                    </div>
+                    <div class="metric-box perf">
+                        <div class="value" id="exactMs">0</div>
+                        <div class="sublabel">⏱️ Время расчёта (мс)</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="graph-card">
+                <div class="graph-header">
+                    <h3>🐜 Муравьиный алгоритм (ACO)</h3>
+                    <button class="btn btn-secondary" id="btnFitAco" style="width:auto; padding: 5px 10px; font-size: 0.8em;">Центрировать</button>
+                </div>
+                <div id="cyAco"></div>
+                <div class="metrics-grid">
+                    <div class="metric-box">
+                        <div class="value" id="acoCost">0</div>
+                        <div class="sublabel">Стоимость</div>
+                    </div>
+                    <div class="metric-box time">
+                        <div class="value" id="acoTime">0</div>
+                        <div class="sublabel">Время (ч)</div>
+                    </div>
+                    <div class="metric-box perf">
+                        <div class="value" id="acoMs">0</div>
+                        <div class="sublabel">⏱️ Время ползания муравьёв (мс)</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-layout">
+            <div class="card">
+                <h3>⚙️ Управление сетью</h3>
+
+                <details open>
+                    <summary>🔧 Целочисленные параметры генерации и ACO</summary>
+                
+                    <div class="settings-grid">
+                        <div class="setting-group">
+                            <h4>Узлы</h4>
+                
+                            <div class="setting-row">
+                                <label>
+                                    Источники
+                                    <span class="help-icon" data-tip="Количество пунктов производства типа A. Их суммарный запас автоматически распределяется по потребителям так, чтобы транспортная задача была сбалансированной.">?</span>
+                                </label>
+                                <input type="number" id="setSources" min="1" value="10">
+                            </div>
+                
+                            <div class="setting-row">
+                                <label>
+                                    Потребители
+                                    <span class="help-icon" data-tip="Количество пунктов назначения типа B. Потребности этих узлов генерируются автоматически так, чтобы суммарный спрос совпадал с суммарным запасом.">?</span>
+                                </label>
+                                <input type="number" id="setDests" min="1" value="10">
+                            </div>
+                
+                            <div class="setting-row">
+                                <label>
+                                    Транзитные
+                                    <span class="help-icon" data-tip="Количество промежуточных узлов типа C. В транзитных узлах баланс потока равен нулю: сколько груза пришло, столько же должно уйти.">?</span>
+                                </label>
+                                <input type="number" id="setTransit" min="0" value="80">
+                            </div>
+                
+                            <div class="info-note">
+                                Всего узлов = источники + потребители + транзитные.
+                            </div>
+                        </div>
+                
+                        <div class="setting-group">
+                            <h4>Рёбра</h4>
+                
+                            <div class="setting-row">
+                                <label>
+                                    Минимум
+                                    <span class="help-icon" data-tip="Минимальное желаемое количество рёбер в случайном графе. Если значение меньше количества узлов, оно автоматически увеличивается до числа узлов, потому что для сильной связности нужен гамильтонов цикл.">?</span>
+                                </label>
+                                <input type="number" id="setEdgesMin" min="1" value="150">
+                            </div>
+                
+                            <div class="setting-row">
+                                <label>
+                                    Максимум
+                                    <span class="help-icon" data-tip="Максимальное количество рёбер. Итоговое число рёбер выбирается случайно в диапазоне от минимума до максимума.">?</span>
+                                </label>
+                                <input type="number" id="setEdgesMax" min="1" value="200">
+                            </div>
+                
+                            <div class="info-note">
+                                Минимум автоматически не может быть меньше числа узлов, иначе невозможна сильная связность.
+                            </div>
+                        </div>
+                
+                        <div class="setting-group">
+                            <h4>Запасы источников</h4>
+                
+                            <div class="setting-row">
+                                <label>
+                                    Минимум
+                                    <span class="help-icon" data-tip="Минимальный запас одной единицы товара, который может быть назначен случайному источнику A при генерации графа.">?</span>
+                                </label>
+                                <input type="number" id="setSupplyMin" min="1" value="5">
+                            </div>
+                
+                            <div class="setting-row">
+                                <label>
+                                    Максимум
+                                    <span class="help-icon" data-tip="Максимальный запас одной единицы товара, который может быть назначен случайному источнику A при генерации графа.">?</span>
+                                </label>
+                                <input type="number" id="setSupplyMax" min="1" value="20">
+                            </div>
+                
+                            <div class="info-note">
+                                Потребности распределяются автоматически так, чтобы баланс совпадал.
+                            </div>
+                        </div>
+                
+                        <div class="setting-group">
+                            <h4>Муравьиный алгоритм</h4>
+                
+                            <div class="setting-row">
+                                <label>
+                                    Муравьи
+                                    <span class="help-icon" data-tip="Количество муравьёв, которые строят маршруты на каждой итерации обучения ACO. Больше муравьёв — лучше исследование сети, но выше время расчёта.">?</span>
+                                </label>
+                                <input type="number" id="setAnts" min="1" value="30">
+                            </div>
+                
+                            <div class="setting-row">
+                                <label>
+                                    Итерации
+                                    <span class="help-icon" data-tip="Количество циклов обучения муравьиной колонии. На каждой итерации муравьи ползают по графу, а феромоны усиливаются на удачных рёбрах и испаряются на остальных.">?</span>
+                                </label>
+                                <input type="number" id="setIterations" min="1" value="20">
+                            </div>
+                
+                            <div class="setting-row">
+                                <label>
+                                    Макс. шагов
+                                    <span class="help-icon" data-tip="Ограничение длины пути одного муравья. Защищает алгоритм от бесконечного блуждания по большим графам. Если муравей не дошёл до потребителя за это число шагов, его маршрут отбрасывается.">?</span>
+                                </label>
+                                <input type="number" id="setMaxSteps" min="1" value="1000">
+                            </div>
+                
+                            <div class="setting-row">
+                                <label>
+                                    Масштаб феромона
+                                    <span class="help-icon" data-tip="Параметр Q в формуле обновления феромона. Определяет, насколько сильно успешный маршрут усиливает феромон на своих рёбрах. Больше значение — быстрее закрепление найденных путей.">?</span>
+                                </label>
+                                <input type="number" id="setPheromoneScale" min="1" value="100">
+                            </div>
+                        </div>
+                
+                        <div class="setting-group" style="display:none">
+                            <h4>Служебные параметры</h4>
+                
+                            <div class="setting-row">
+                                <label>
+                                    Попытки рёбер
+                                    <span class="help-icon" data-tip="Максимальное число попыток добавить случайное ребро при генерации графа. Нужно, чтобы не зациклиться, если нужное количество рёбер уже почти достигнуто или остаются только дубликаты.">?</span>
+                                </label>
+                                <input type="number" id="setEdgeAttempts" min="100" value="20000">
+                            </div>
+                
+                            <div class="setting-row">
+                                <label>
+                                    Лимит рёбер в таблице
+                                    <span class="help-icon" data-tip="Сколько рёбер показывать в правой таблице редактирования. Это влияет только на интерфейс, не на расчёт. Для больших графов лучше оставить лимит небольшим, чтобы страница не тормозила.">?</span>
+                                </label>
+                                <input type="number" id="setEdgeTableLimit" min="1" value="100">
+                            </div>
+                
+                            <div class="setting-row">
+                                <label>
+                                    Лимит узлов в списке
+                                    <span class="help-icon" data-tip="Сколько источников и потребителей показывать в списке запасов и потребностей. Влияет только на отображение, не на решение задачи.">?</span>
+                                </label>
+                                <input type="number" id="setNodeTableLimit" min="1" value="100">
+                            </div>
+                
+                            <div class="setting-row">
+                                <label>
+                                    Guard extra
+                                    <span class="help-icon" data-tip="Запасной лимит итераций для этапа гарантированной сборки решения в ACO. Нужен как страховка от бесконечного цикла, если граф вдруг оказался неподходящим. В нормально сгенерированном сильносвязном графе не должен срабатывать.">?</span>
+                                </label>
+                                <input type="number" id="setGuardExtra" min="0" value="10">
+                            </div>
+                
+                            <div class="info-note">
+                                Guard extra — запасной лимит итераций для гарантированной сборки решения ACO.
+                            </div>
+                        </div>
+                    </div>
+                
+                    <div class="btn-row">
+                        <button class="btn btn-secondary" id="btnPresetSmall" style="width:auto;">Пресет 100 узлов</button>
+                        <button class="btn btn-secondary" id="btnPresetLarge" style="width:auto;">Пресет 1000 узлов</button>
+                        <button class="btn btn-success" id="btnGenerateRandom" style="flex:1;">🎲 Сгенерировать по настройкам</button>
+                    </div>
+                </details>
+
+                <div class="input-group">
+                    <label>Критерий оптимизации</label>
+                    <div class="mode-selector" id="modeSelector">
+                        <div class="mode-option active" data-mode="cost">💰 Стоимость</div>
+                        <div class="mode-option" data-mode="time">⏱️ Время</div>
+                        <div class="mode-option" data-mode="both">⚖️ Оба</div>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label>Добавить узел вручную</label>
+                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                        <select id="newNodeType">
+                            <option value="source">Источник</option>
+                            <option value="transit">Транзит</option>
+                            <option value="dest">Потребитель</option>
+                        </select>
+                        <input type="number" id="newNodeQty" placeholder="Кол-во" min="0">
+                        <button class="btn btn-primary" id="btnAddNode" style="width: auto;">+</button>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label>Запасы / Потребности</label>
+                    <div id="dynamicInputs" style="max-height: 140px; overflow-y: auto;"></div>
+                </div>
+
+                <div class="input-group">
+                    <label>Ребра (Стоимость / Время)</label>
+                    <div class="costs-grid" id="costsGrid">
+                        <div class="costs-header">
+                            <span>Маршрут</span>
+                            <span>💰</span>
+                            <span>⏱️</span>
+                            <span></span>
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary" id="btnAddEdge" style="margin-top: 10px;">+ Добавить связь</button>
+                </div>
+
+                <button class="btn btn-danger" id="btnReset">↩ Сброс к стандарту</button>
+                <div class="error-msg" id="errorMsg"></div>
+            </div>
+
+            <div class="card">
+                <h3>🐜 Настройки ACO</h3>
+                <div class="aco-settings">
+                    <div class="slider-container">
+                        <label>
+                            <span class="small-help-row">
+                                Испарение (rho):
+                                <span class="help-icon" data-tip="Доля феромона, которая исчезает после каждой итерации. Значение 0 означает почти полное отсутствие забывания, 0.9 означает очень быстрое испарение. Обычно используют 0.3–0.7.">?</span>
+                            </span>
+                        </label>
+                        <input type="range" id="acoRho" min="0.0" max="0.9" step="0.1" value="0.5">
+                        <span id="valRho">0.5</span>
+                    </div>
+                
+                    <div class="slider-container">
+                        <label>
+                            <span class="small-help-row">
+                                Вес эвристики (beta):
+                                <span class="help-icon" data-tip="Насколько сильно муравей ориентируется на локальную выгоду ребра. Чем больше beta, тем жаднее муравей выбирает более дешёвые или быстрые рёбра. Малое beta усиливает роль феромонов и разнообразия поиска.">?</span>
+                            </span>
+                        </label>
+                        <input type="range" id="acoBeta" min="1" max="10" step="1" value="2">
+                        <span id="valBeta">2</span>
+                    </div>
+                    <button class="btn btn-primary" id="btnRunAco">Запустить ACO</button>
+                
+                <!--    <div class="formula-card">
+                        <h4>Формулы муравьиного алгоритма в текущей реализации</h4>
+                    
+                        <div class="formula">
+                            P<sub>st</sub><sup>k</sup> =
+                            (
+                                &tau;<sub>st</sub><sup>&alpha;</sup>
+                                &middot;
+                                &eta;<sub>st</sub><sup>&beta;</sup>
+                                &middot;
+                                r<sub>t</sub>
+                            )
+                            /
+                            &Sigma;<sub>u &isin; D<sub>k</sub>(s)</sub>
+                            (
+                                &tau;<sub>su</sub><sup>&alpha;</sup>
+                                &middot;
+                                &eta;<sub>su</sub><sup>&beta;</sup>
+                                &middot;
+                                r<sub>u</sub>
+                            )
+                        </div>
+                    
+                        <div class="formula">
+                            &eta;<sub>st</sub> = 1 / (w<sub>st</sub> + &epsilon;)
+                        </div>
+                    
+                        <div class="formula">
+                            &tau;<sub>st</sub> &larr; (1 &minus; &rho;) &middot; &tau;<sub>st</sub> + &Delta;&tau;<sub>st</sub>
+                        </div>
+                    
+                        <div class="formula">
+                            &Delta;&tau;<sub>st</sub> =
+                            &Sigma;<sub>k=1..m</sub>
+                            (Q / (L<sub>k</sub> + 1))
+                            &middot;
+                            (f<sub>st</sub><sup>k</sup> / F<sub>k</sub>)
+                        </div>
+                    
+                        <div class="formula">
+                            &Delta;&tau;<sub>st</sub><sup>elite</sup> =
+                            (2Q / (L<sub>best</sub> + 1))
+                            &middot;
+                            (f<sub>st</sub><sup>best</sup> / F<sub>best</sub>)
+                        </div>
+                    
+                        <div class="formula-note">
+                            <b>Обозначения:</b><br><br>
+                    
+                            <b>k</b> — номер муравья в текущей итерации.<br>
+                    
+                            <b>s</b> — источник, из которого муравей везет груз.<br>
+                    
+                            <b>t</b> — потребитель, которого муравей может выбрать.<br>
+                    
+                            <b>u</b> — перебор по всем допустимым потребителям.<br>
+                    
+                            <b>P<sub>st</sub><sup>k</sup></b> — вероятность того, что муравей k выберет потребителя t для источника s.<br>
+                    
+                            <b>&tau;<sub>st</sub></b> — феромон на логической паре &laquo;источник s &rarr; потребитель t&raquo;.<br>
+                    
+                            <b>&alpha;</b> — вес феромона. В текущем коде &alpha; = 1.<br>
+                    
+                            <b>&eta;<sub>st</sub></b> — эвристическая привлекательность пары s &rarr; t.<br>
+                    
+                            <b>&beta;</b> — вес эвристики. Задается пользователем. Чем больше &beta;, тем сильнее муравьи предпочитают более дешевые/быстрые пары.<br>
+                    
+                            <b>w<sub>st</sub></b> — кратчайший вес пути от источника s до потребителя t. Зависит от режима: стоимость, время или стоимость + время.<br>
+                    
+                            <b>&epsilon;</b> — защита от деления на ноль. В текущем коде &epsilon; = 1.<br>
+                    
+                            <b>r<sub>t</sub></b> — остаточная потребность потребителя t. В коде соответствует remD[di].<br>
+                    
+                            <b>D<sub>k</sub>(s)</b> — множество допустимых потребителей для муравья k и источника s: потребители с ненулевым остаточным спросом, достижимые из s.<br>
+                    
+                            <b>&rho;</b> — коэффициент испарения феромона. Задается пользователем.<br>
+                    
+                            <b>&Delta;&tau;<sub>st</sub></b> — прирост феромона на паре s &rarr; t после прохода муравьев.<br>
+                    
+                            <b>m</b> — количество муравьев в одной итерации.<br>
+                    
+                            <b>Q</b> — масштаб феромона. Задается параметром &laquo;Масштаб феромона&raquo;.<br>
+                    
+                            <b>L<sub>k</sub></b> — целевой вес полного транспортного плана муравья k.<br>
+                    
+                            <b>f<sub>st</sub><sup>k</sup></b> — поток, отправленный муравьем k от источника s к потребителю t.<br>
+                    
+                            <b>F<sub>k</sub></b> — суммарный поток плана муравья k.<br>
+                    
+                            <b>best</b> — лучший план, найденный за все итерации.<br>
+                    
+                            <b>&Delta;&tau;<sub>st</sub><sup>elite</sup></b> — элитное усиление феромона для лучшего плана. В текущем коде масштаб Q для лучшего плана удваивается.
+                        </div>
+                    </div>-->
+                
+                
+                </div>
+
+                <h3>🛤️ Маршруты ACO</h3>
+                <ul class="routes-list" id="acoRoutesList"></ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const defaultState = {
+                nodes: [
+                    { id: 'A1', type: 'source', supply: 10 },
+                    { id: 'A2', type: 'source', supply: 5 },
+                    { id: 'C1', type: 'transit' },
+                    { id: 'C2', type: 'transit' },
+                    { id: 'B1', type: 'dest', demand: 8 },
+                    { id: 'B2', type: 'dest', demand: 7 }
+                ],
+                edges: [
+                    { from: 'A1', to: 'A2', cost: 5, time: 4 },
+                    { from: 'A1', to: 'C1', cost: 4, time: 2 },
+                    { from: 'A2', to: 'B1', cost: 2, time: 3 },
+                    { from: 'A2', to: 'C2', cost: 1, time: 5 },
+                    { from: 'C1', to: 'A2', cost: 4, time: 4 },
+                    { from: 'C1', to: 'B1', cost: 3, time: 2 },
+                    { from: 'C2', to: 'B1', cost: 3, time: 2 },
+                    { from: 'C2', to: 'B2', cost: 3, time: 3 },
+                    { from: 'B1', to: 'B2', cost: 2, time: 1 }
+                ]
+            };
+
+            const presetSmall = {
+                setSources: 10,
+                setDests: 10,
+                setTransit: 80,
+                setEdgesMin: 150,
+                setEdgesMax: 200,
+                setSupplyMin: 5,
+                setSupplyMax: 20,
+                setAnts: 30,
+                setIterations: 20,
+                setMaxSteps: 1000,
+                setPheromoneScale: 100,
+                setEdgeAttempts: 20000,
+                setEdgeTableLimit: 100,
+                setNodeTableLimit: 100,
+                setGuardExtra: 10
+            };
+
+            const presetLarge = {
+                setSources: 100,
+                setDests: 100,
+                setTransit: 800,
+                setEdgesMin: 1500,
+                setEdgesMax: 2000,
+                setSupplyMin: 1,
+                setSupplyMax: 2,
+                setAnts: 20,
+                setIterations: 5,
+                setMaxSteps: 500,
+                setPheromoneScale: 100,
+                setEdgeAttempts: 50000,
+                setEdgeTableLimit: 100,
+                setNodeTableLimit: 100,
+                setGuardExtra: 10
+            };
+
+            let nodes = JSON.parse(JSON.stringify(defaultState.nodes));
+            let edges = JSON.parse(JSON.stringify(defaultState.edges));
+            let currentOptMode = 'cost';
+            let isAddingEdge = false;
+            let selectedSourceNode = null;
+            let activeLayout = null;
+
+            const cyStyle = [
+                {
+                    selector: 'node',
+                    style: {
+                        'label': 'data(id)',
+                        'text-valign': 'center',
+                        'text-halign': 'center',
+                        'color': '#fff',
+                        'text-outline-width': 2,
+                        'text-outline-color': '#1a1a2e',
+                        'width': 30,
+                        'height': 30,
+                        'border-width': 2,
+                        'font-size': '10px'
+                    }
+                },
+                { selector: 'node[type="source"]', style: { 'background-color': '#00d2ff', 'border-color': '#00d2ff' } },
+                { selector: 'node[type="transit"]', style: { 'background-color': '#7b68ee', 'border-color': '#7b68ee' } },
+                { selector: 'node[type="dest"]', style: { 'background-color': '#ff6b6b', 'border-color': '#ff6b6b' } },
+                {
+                    selector: 'edge',
+                    style: {
+                        'width': 1,
+                        'line-color': '#3a4a6a',
+                        'target-arrow-color': '#3a4a6a',
+                        'target-arrow-shape': 'triangle',
+                        'curve-style': 'bezier',
+                        'label': '',
+                        'font-size': '12px',
+                        'color': '#fff'
+                    }
+                },
+                {
+                    selector: 'edge.active',
+                    style: {
+                        'width': 3,
+                        'line-color': '#64ffda',
+                        'target-arrow-color': '#64ffda',
+                        'shadow-blur': 5,
+                        'shadow-color': '#64ffda',
+                        'label': 'data(activeLabel)'
+                    }
+                }
+            ];
+
+            const cyExact = cytoscape({
+                container: document.getElementById('cyExact'),
+                style: cyStyle,
+                wheelSensitivity: 0.2
+            });
+
+            const cyAco = cytoscape({
+                container: document.getElementById('cyAco'),
+                style: cyStyle,
+                wheelSensitivity: 0.2
+            });
+
+            class MinHeap {
+                constructor() {
+                    this.items = [];
+                }
+                push(item) {
+                    const a = this.items;
+                    a.push(item);
+                    let i = a.length - 1;
+                    while (i > 0) {
+                        const p = (i - 1) >> 1;
+                        if (a[p].d <= a[i].d) break;
+                        [a[p], a[i]] = [a[i], a[p]];
+                        i = p;
+                    }
+                }
+                pop() {
+                    const a = this.items;
+                    if (a.length === 0) return null;
+                    const top = a[0];
+                    const last = a.pop();
+                    if (a.length > 0) {
+                        a[0] = last;
+                        let i = 0;
+                        while (true) {
+                            const l = 2 * i + 1;
+                            const r = l + 1;
+                            let s = i;
+                            if (l < a.length && a[l].d < a[s].d) s = l;
+                            if (r < a.length && a[r].d < a[s].d) s = r;
+                            if (s === i) break;
+                            [a[s], a[i]] = [a[i], a[s]];
+                            i = s;
+                        }
+                    }
+                    return top;
+                }
+                size() {
+                    return this.items.length;
+                }
+            }
+
+            function getInt(id, fallback) {
+                const el = document.getElementById(id);
+                if (!el) return fallback;
+                const v = Number.parseInt(el.value, 10);
+                return Number.isFinite(v) ? v : fallback;
+            }
+
+            function clampInt(v, min, max = Number.MAX_SAFE_INTEGER) {
+                if (!Number.isFinite(v)) v = min;
+                return Math.max(min, Math.min(max, Math.trunc(v)));
+            }
+
+            function readIntegerSettings() {
+                const sources = clampInt(getInt('setSources', 10), 1, 100000);
+                const dests = clampInt(getInt('setDests', 10), 1, 100000);
+                const transit = clampInt(getInt('setTransit', 80), 0, 1000000);
+
+                const totalNodes = sources + dests + transit;
+                const maxPossibleEdges = Math.max(1, totalNodes * (totalNodes - 1));
+
+                let edgesMin = clampInt(getInt('setEdgesMin', 150), 1, maxPossibleEdges);
+                let edgesMax = clampInt(getInt('setEdgesMax', 200), 1, maxPossibleEdges);
+
+                // Для сильной связности нужен как минимум гамильтонов цикл = totalNodes рёбер.
+                edgesMin = Math.max(edgesMin, totalNodes);
+                edgesMax = Math.max(edgesMax, edgesMin);
+
+                const supplyMin = clampInt(getInt('setSupplyMin', 5), 1, 1000000);
+                const supplyMax = clampInt(getInt('setSupplyMax', 20), supplyMin, 1000000);
+
+                const ants = clampInt(getInt('setAnts', 30), 1, 100000);
+                const iterations = clampInt(getInt('setIterations', 20), 1, 100000);
+                const maxSteps = clampInt(getInt('setMaxSteps', 1000), 1, 1000000);
+                const pheromoneScale = clampInt(getInt('setPheromoneScale', 100), 1, 10000000);
+
+                const edgeAttempts = clampInt(getInt('setEdgeAttempts', 20000), 100, 10000000);
+                const edgeTableLimit = clampInt(getInt('setEdgeTableLimit', 100), 1, 100000);
+                const nodeTableLimit = clampInt(getInt('setNodeTableLimit', 100), 1, 100000);
+                const guardExtra = clampInt(getInt('setGuardExtra', 10), 0, 100000);
+
+                return {
+                    sources,
+                    dests,
+                    transit,
+                    totalNodes,
+                    edgesMin,
+                    edgesMax,
+                    supplyMin,
+                    supplyMax,
+                    ants,
+                    iterations,
+                    maxSteps,
+                    pheromoneScale,
+                    edgeAttempts,
+                    edgeTableLimit,
+                    nodeTableLimit,
+                    guardExtra
+                };
+            }
+
+            function applyPreset(preset) {
+                Object.entries(preset).forEach(([id, value]) => {
+                    const el = document.getElementById(id);
+                    if (el) el.value = value;
+                });
+            }
+
+            function generateRandomGraph() {
+                const s = readIntegerSettings();
+
+                const newNodes = [];
+                const sources = [];
+                const dests = [];
+
+                for (let i = 0; i < s.sources; i++) {
+                    const id = `A${i + 1}`;
+                    const supply = Math.floor(Math.random() * (s.supplyMax - s.supplyMin + 1)) + s.supplyMin;
+                    newNodes.push({ id, type: 'source', supply });
+                    sources.push(id);
+                }
+
+                for (let i = 0; i < s.transit; i++) {
+                    const id = `C${i + 1}`;
+                    newNodes.push({ id, type: 'transit' });
+                }
+
+                for (let i = 0; i < s.dests; i++) {
+                    const id = `B${i + 1}`;
+                    newNodes.push({ id, type: 'dest', demand: 0 });
+                    dests.push(id);
+                }
+
+                const totalSupply = newNodes
+                    .filter(n => n.type === 'source')
+                    .reduce((sum, n) => sum + n.supply, 0);
+
+                const baseDemand = Math.floor(totalSupply / s.dests);
+                let extraDemand = totalSupply % s.dests;
+
+                dests.forEach(id => {
+                    const node = newNodes.find(n => n.id === id);
+                    node.demand = baseDemand + (extraDemand > 0 ? 1 : 0);
+                    if (extraDemand > 0) extraDemand--;
+                });
+
+                const newEdges = [];
+                const allIds = newNodes.map(n => n.id);
+                const edgeSet = new Set();
+
+                const shuffled = [...allIds];
+                for (let i = shuffled.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+                }
+
+                // Гамильтонов цикл гарантирует сильную связность.
+                for (let i = 0; i < shuffled.length; i++) {
+                    const u = shuffled[i];
+                    const v = shuffled[(i + 1) % shuffled.length];
+                    addEdgeToList(newEdges, u, v);
+                    edgeSet.add(edgeKey(u, v));
+                }
+
+                let targetEdges = s.edgesMin;
+                if (s.edgesMax > s.edgesMin) {
+                    targetEdges = s.edgesMin + Math.floor(Math.random() * (s.edgesMax - s.edgesMin + 1));
+                }
+
+                const maxPossibleEdges = s.totalNodes * (s.totalNodes - 1);
+                targetEdges = Math.min(targetEdges, maxPossibleEdges);
+
+                let attempts = 0;
+                while (newEdges.length < targetEdges && attempts < s.edgeAttempts) {
+                    const u = allIds[Math.floor(Math.random() * allIds.length)];
+                    const v = allIds[Math.floor(Math.random() * allIds.length)];
+                    const key = edgeKey(u, v);
+                    if (u !== v && !edgeSet.has(key)) {
+                        addEdgeToList(newEdges, u, v);
+                        edgeSet.add(key);
+                    }
+                    attempts++;
+                }
+
+                nodes = newNodes;
+                edges = newEdges;
+                refreshGraphs(false);
+            }
+
+            function edgeKey(u, v) {
+                return `${u}__${v}`;
+            }
+
+            function addEdgeToList(edgeList, u, v) {
+                edgeList.push({
+                    from: u,
+                    to: v,
+                    cost: Math.floor(Math.random() * 10) + 1,
+                    time: Math.floor(Math.random() * 10) + 1
+                });
+            }
+
+            function generateNextId(type) {
+                const prefixMap = { source: 'A', transit: 'C', dest: 'B' };
+                const prefix = prefixMap[type];
+                const existingIds = new Set(nodes.map(n => n.id));
+                let counter = 1;
+                while (true) {
+                    const newId = `${prefix}${counter}`;
+                    if (!existingIds.has(newId)) return newId;
+                    counter++;
+                }
+            }
+
+            function toggleQtyInput() {
+                const type = document.getElementById('newNodeType').value;
+                const input = document.getElementById('newNodeQty');
+                input.style.display = type === 'transit' ? 'none' : 'block';
+                input.placeholder = type === 'source' ? 'Запас' : 'Потребность';
+            }
+
+            function renderInputs() {
+                const limits = readIntegerSettings();
+
+                const dynContainer = document.getElementById('dynamicInputs');
+                dynContainer.innerHTML = '';
+
+                const terminalNodes = nodes.filter(n => n.type === 'source' || n.type === 'dest');
+                const visibleTerminalNodes = terminalNodes.slice(0, limits.nodeTableLimit);
+
+                visibleTerminalNodes.forEach(node => {
+                    const div = document.createElement('div');
+                    div.className = 'dyn-input-row';
+
+                    const val = node.type === 'source' ? (node.supply || 0) : (node.demand || 0);
+                    const label = node.type === 'source' ? `Запас ${node.id}` : `Спрос ${node.id}`;
+
+                    div.innerHTML = `
+                        <label>${label}</label>
+                        <div style="display:flex; gap:5px; align-items:center;">
+                            <input type="number" min="0" value="${val}" data-node-id="${node.id}">
+                            <button class="btn-icon del-node" data-node-id="${node.id}">×</button>
+                        </div>
+                    `;
+                    dynContainer.appendChild(div);
+                });
+
+                if (terminalNodes.length > limits.nodeTableLimit) {
+                    const info = document.createElement('div');
+                    info.style.color = '#8892b0';
+                    info.style.fontSize = '0.8em';
+                    info.style.marginTop = '5px';
+                    info.innerText = `... и ещё ${terminalNodes.length - limits.nodeTableLimit} узлов скрыто лимитом`;
+                    dynContainer.appendChild(info);
+                }
+
+                dynContainer.querySelectorAll('input[data-node-id]').forEach(inp => {
+                    inp.addEventListener('change', (e) => {
+                        const id = e.target.dataset.nodeId;
+                        const node = nodes.find(n => n.id === id);
+                        if (!node) return;
+
+                        if (node.type === 'source') node.supply = parseFloat(e.target.value) || 0;
+                        if (node.type === 'dest') node.demand = parseFloat(e.target.value) || 0;
+
+                        solveAndDraw();
+                    });
+                });
+
+                dynContainer.querySelectorAll('.del-node').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        removeNode(e.target.dataset.nodeId);
+                    });
+                });
+
+                const grid = document.getElementById('costsGrid');
+                grid.innerHTML = `
+                    <div class="costs-header">
+                        <span>Маршрут</span>
+                        <span>💰</span>
+                        <span>⏱️</span>
+                        <span></span>
+                    </div>
+                `;
+
+                const visibleEdges = edges.slice(0, limits.edgeTableLimit);
+
+                visibleEdges.forEach((edge, i) => {
+                    const div = document.createElement('div');
+                    div.className = 'cost-item';
+                    div.innerHTML = `
+                        <span>${edge.from} → ${edge.to}</span>
+                        <input type="number" min="0" value="${edge.cost}" data-edge-index="${i}" data-param="cost">
+                        <input type="number" min="0" value="${edge.time}" data-edge-index="${i}" data-param="time">
+                        <button class="btn-icon del-edge" data-edge-index="${i}">×</button>
+                    `;
+                    grid.appendChild(div);
+                });
+
+                if (edges.length > limits.edgeTableLimit) {
+                    const info = document.createElement('div');
+                    info.style.gridColumn = '1 / -1';
+                    info.style.textAlign = 'center';
+                    info.style.color = '#8892b0';
+                    info.innerText = `... и ещё ${edges.length - limits.edgeTableLimit} рёбер скрыто лимитом`;
+                    grid.appendChild(info);
+                }
+
+                grid.querySelectorAll('input[data-edge-index]').forEach(inp => {
+                    inp.addEventListener('change', (e) => {
+                        const idx = parseInt(e.target.dataset.edgeIndex, 10);
+                        const param = e.target.dataset.param;
+                        edges[idx][param] = parseFloat(e.target.value) || 0;
+                        solveAndDraw();
+                    });
+                });
+
+                grid.querySelectorAll('.del-edge').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        removeEdge(parseInt(e.target.dataset.edgeIndex, 10));
+                    });
+                });
+            }
+
+            function getElementsData() {
+                const elements = [];
+                nodes.forEach(n => elements.push({ data: { id: n.id, type: n.type } }));
+                edges.forEach(e => {
+                    elements.push({
+                        data: {
+                            id: `${e.from}_${e.to}`,
+                            source: e.from,
+                            target: e.to,
+                            label: ''
+                        }
+                    });
+                });
+                return elements;
+            }
+
+            function getLayoutConfig(nodeCount) {
+                if (nodeCount <= 250) {
+                    return {
+                        name: 'cola',
+                        animate: false,
+                        randomize: false,
+                        fit: true,
+                        padding: 30,
+                        maxSimulationTime: 4000
+                    };
+                }
+
+                return {
+                    name: 'cose',
+                    animate: false,
+                    randomize: false,
+                    fit: true,
+                    padding: 30,
+                    nodeRepulsion: 8000,
+                    idealEdgeLength: 50,
+                    edgeElasticity: 100,
+                    nestingFactor: 0.1,
+                    gravity: 80,
+                    numIter: 1000,
+                    tile: true
+                };
+            }
+
+            function refreshGraphs(preservePositions = true) {
+                renderInputs();
+
+                const oldPositions = new Map();
+                if (preservePositions) {
+                    cyExact.nodes().forEach(n => {
+                        oldPositions.set(n.id(), n.position());
+                    });
+                }
+
+                if (activeLayout) {
+                    activeLayout.stop();
+                }
+
+                cyExact.elements().remove();
+                cyExact.add(getElementsData());
+
+                if (preservePositions) {
+                    cyExact.nodes().forEach(n => {
+                        const p = oldPositions.get(n.id());
+                        if (p) n.position(p);
+                    });
+                }
+
+                const layoutCfg = getLayoutConfig(nodes.length);
+                activeLayout = cyExact.layout(layoutCfg);
+
+                activeLayout.one('layoutstop', () => {
+                    cyAco.elements().remove();
+                    cyAco.add(getElementsData());
+
+                    cyExact.nodes().forEach(n => {
+                        const target = cyAco.getElementById(n.id());
+                        if (target.length) {
+                            target.position(n.position());
+                        }
+                    });
+
+                    solveAndDraw();
+                });
+
+                activeLayout.run();
+            }
+
+            function removeNode(id) {
+                nodes = nodes.filter(n => n.id !== id);
+                edges = edges.filter(e => e.from !== id && e.to !== id);
+                refreshGraphs(true);
+            }
+
+            function removeEdge(index) {
+                edges.splice(index, 1);
+                refreshGraphs(true);
+            }
+
+            function setMode(mode) {
+                currentOptMode = mode;
+                document.querySelectorAll('.mode-option').forEach(el => {
+                    el.classList.toggle('active', el.dataset.mode === mode);
+                });
+                solveAndDraw();
+            }
+
+            function resetToDefault() {
+                nodes = JSON.parse(JSON.stringify(defaultState.nodes));
+                edges = JSON.parse(JSON.stringify(defaultState.edges));
+                currentOptMode = 'cost';
+                document.querySelectorAll('.mode-option').forEach(el => {
+                    el.classList.toggle('active', el.dataset.mode === 'cost');
+                });
+                refreshGraphs(false);
+            }
+
+            function solveExact() {
+                const t0 = performance.now();
+                const errorMsg = document.getElementById('errorMsg');
+                errorMsg.style.display = 'none';
+
+                cyExact.edges().removeClass('active').data('activeLabel', '');
+
+                const supplies = {};
+                const demands = {};
+                let totalSupply = 0;
+                let totalDemand = 0;
+
+                nodes.forEach(n => {
+                    if (n.type === 'source') {
+                        supplies[n.id] = n.supply || 0;
+                        totalSupply += n.supply || 0;
+                    }
+                    if (n.type === 'dest') {
+                        demands[n.id] = n.demand || 0;
+                        totalDemand += n.demand || 0;
+                    }
+                });
+
+                if (totalSupply !== totalDemand) {
+                    errorMsg.textContent = `Баланс нарушен: Запасы (${totalSupply}) ≠ Спрос (${totalDemand})`;
+                    errorMsg.style.display = 'block';
+                    document.getElementById('exactCost').textContent = '—';
+                    document.getElementById('exactTime').textContent = '—';
+                    document.getElementById('exactMs').textContent = '—';
+                    return;
+                }
+
+                const idToIndex = new Map();
+                nodes.forEach((n, i) => idToIndex.set(n.id, i));
+
+                const N = nodes.length;
+                const S = N;
+                const T = N + 1;
+                const numNodes = N + 2;
+                const graph = Array.from({ length: numNodes }, () => []);
+
+                function addResidualEdge(u, v, cap, w) {
+                    graph[u].push({ to: v, cap, w, flow: 0, rev: graph[v].length });
+                    graph[v].push({ to: u, cap: 0, w: -w, flow: 0, rev: graph[u].length - 1 });
+                }
+
+                edges.forEach(e => {
+                    const u = idToIndex.get(e.from);
+                    const v = idToIndex.get(e.to);
+                    if (u === undefined || v === undefined) return;
+
+                    let weight = currentOptMode === 'cost'
+                        ? e.cost
+                        : currentOptMode === 'time'
+                            ? e.time
+                            : e.cost + e.time;
+
+                    addResidualEdge(u, v, Math.max(1, totalSupply), weight);
+                });
+
+                nodes.forEach((n, i) => {
+                    if (n.type === 'source' && supplies[n.id] > 0) {
+                        addResidualEdge(S, i, supplies[n.id], 0);
+                    }
+                    if (n.type === 'dest' && demands[n.id] > 0) {
+                        addResidualEdge(i, T, demands[n.id], 0);
+                    }
+                });
+
+                const potential = new Array(numNodes).fill(0);
+                let maxFlow = 0;
+
+                while (true) {
+                    const dist = new Array(numNodes).fill(Infinity);
+                    const parentV = new Array(numNodes).fill(-1);
+                    const parentI = new Array(numNodes).fill(-1);
+
+                    dist[S] = 0;
+                    const heap = new MinHeap();
+                    heap.push({ v: S, d: 0 });
+
+                    while (heap.size() > 0) {
+                        const cur = heap.pop();
+                        if (cur.d !== dist[cur.v]) continue;
+
+                        const u = cur.v;
+                        const adj = graph[u];
+
+                        for (let i = 0; i < adj.length; i++) {
+                            const e = adj[i];
+                            if (e.cap - e.flow <= 0) continue;
+
+                            let reducedCost = e.w + potential[u] - potential[e.to];
+                            if (reducedCost < 0) reducedCost = 0;
+
+                            const nd = cur.d + reducedCost;
+                            if (nd < dist[e.to]) {
+                                dist[e.to] = nd;
+                                parentV[e.to] = u;
+                                parentI[e.to] = i;
+                                heap.push({ v: e.to, d: nd });
+                            }
+                        }
+                    }
+
+                    if (dist[T] === Infinity) break;
+
+                    for (let i = 0; i < numNodes; i++) {
+                        if (dist[i] < Infinity) potential[i] += dist[i];
+                    }
+
+                    let push = Infinity;
+                    let curr = T;
+                    while (curr !== S) {
+                        const u = parentV[curr];
+                        if (u < 0) {
+                            push = 0;
+                            break;
+                        }
+                        const e = graph[u][parentI[curr]];
+                        push = Math.min(push, e.cap - e.flow);
+                        curr = u;
+                    }
+
+                    if (push <= 0) break;
+
+                    curr = T;
+                    while (curr !== S) {
+                        const u = parentV[curr];
+                        const e = graph[u][parentI[curr]];
+                        e.flow += push;
+                        graph[curr][e.rev].flow -= push;
+                        curr = u;
+                    }
+
+                    maxFlow += push;
+                }
+
+                if (maxFlow < totalSupply) {
+                    errorMsg.textContent = 'Точный алгоритм не нашёл полного решения. Проверьте связность графа.';
+                    errorMsg.style.display = 'block';
+                    document.getElementById('exactCost').textContent = '—';
+                    document.getElementById('exactTime').textContent = '—';
+                    document.getElementById('exactMs').textContent = '—';
+                    return;
+                }
+
+                let realCost = 0;
+                let realTime = 0;
+
+                edges.forEach(e => {
+                    const u = idToIndex.get(e.from);
+                    const v = idToIndex.get(e.to);
+                    if (u === undefined || v === undefined) return;
+
+                    const fwd = graph[u].find(edge => edge.to === v && edge.w >= 0);
+                    const flow = fwd ? fwd.flow : 0;
+
+                    if (flow > 0) {
+                        realCost += flow * e.cost;
+                        realTime += flow * e.time;
+
+                        const cyEdge = cyExact.getElementById(`${e.from}_${e.to}`);
+                        if (cyEdge.length) {
+                            cyEdge.addClass('active');
+                            cyEdge.data('activeLabel', `${Math.round(flow)}`);
+                        }
+                    }
+                });
+
+                const t1 = performance.now();
+                document.getElementById('exactCost').textContent = Math.round(realCost);
+                document.getElementById('exactTime').textContent = Math.round(realTime);
+                document.getElementById('exactMs').textContent = (t1 - t0).toFixed(2);
+            }
+
+           function intPow(base, exp) {
+                if (exp === 1) return base;
+                if (exp === 2) return base * base;
+                if (exp === 3) return base * base * base;
+            
+                let result = 1;
+                for (let i = 0; i < exp; i++) {
+                    result *= base;
+                }
+                return result;
+            }
+            
+            class PureAntColonyTransportation {
+                constructor(nodes, edges, supplies, demands, mode, opts) {
+                    this.nodes = nodes;
+                    this.edges = edges;
+                    this.mode = mode;
+                    this.opts = opts;
+            
+                    this.eps = 1e-9;
+                    this.minPheromone = 0.01;
+                    this.maxPheromone = 10000;
+            
+                    this.alpha = 1;
+                    this.beta = Math.max(1, Math.round(opts.beta ?? 2));
+                    this.rho = Math.min(0.99, Math.max(0, opts.rho ?? 0.5));
+                    this.Q = Math.max(1, opts.pheromoneScale || 100);
+            
+                    this.nodeIndex = new Map();
+                    this.nodeIds = [];
+            
+                    nodes.forEach((node, index) => {
+                        this.nodeIndex.set(node.id, index);
+                        this.nodeIds.push(node.id);
+                    });
+            
+                    this.nCount = nodes.length;
+            
+                    this.sourceIds = [];
+                    this.destIds = [];
+                    this.supplyBySource = [];
+                    this.demandByDest = [];
+            
+                    nodes.forEach(node => {
+                        const supply = Number(supplies[node.id] || 0);
+                        const demand = Number(demands[node.id] || 0);
+            
+                        if (node.type === 'source' && supply > this.eps) {
+                            this.sourceIds.push(node.id);
+                            this.supplyBySource.push(supply);
+                        }
+            
+                        if (node.type === 'dest' && demand > this.eps) {
+                            this.destIds.push(node.id);
+                            this.demandByDest.push(demand);
+                        }
+                    });
+            
+                    this.sCount = this.sourceIds.length;
+                    this.dCount = this.destIds.length;
+            
+                    this.sourceNodeIdx = this.sourceIds.map(id => this.nodeIndex.get(id));
+                    this.destNodeIdx = this.destIds.map(id => this.nodeIndex.get(id));
+            
+                    // Список исходящих рёбер для каждого узла.
+                    // Используем числовые индексы узлов, а не строковые ключи.
+                    this.out = Array.from({ length: this.nCount }, () => []);
+            
+                    edges.forEach(edge => {
+                        const fromIdx = this.nodeIndex.get(edge.from);
+                        const toIdx = this.nodeIndex.get(edge.to);
+            
+                        if (fromIdx === undefined || toIdx === undefined) return;
+            
+                        this.out[fromIdx].push({
+                            fromIdx,
+                            toIdx,
+                            fromId: edge.from,
+                            toId: edge.to,
+                            edgeId: `${edge.from}_${edge.to}`,
+                            cost: Number(edge.cost || 0),
+                            time: Number(edge.time || 0),
+                            weight: this.getEdgeWeight(edge)
+                        });
+                    });
+            
+                    const pairCount = this.sCount * this.dCount;
+            
+                    // Феромоны хранятся в плоском Float64Array:
+                    // индекс пары = sourceIndex * destCount + destIndex
+                    this.pheromones = new Float64Array(pairCount).fill(1.0);
+            
+                    // Матрицы кратчайших путей источник -> потребитель.
+                    this.pathWeight = new Float64Array(pairCount).fill(Infinity);
+                    this.pathCost = new Float64Array(pairCount).fill(0);
+                    this.pathTime = new Float64Array(pairCount).fill(0);
+            
+                    // Кэш самих путей.
+                    this.pathEdges = new Array(pairCount).fill(null);
+            
+                    // Для восстановления путей храним родителей по каждому источнику.
+                    this.parentNodeBySource = new Array(this.sCount);
+                    this.parentEdgeBySource = new Array(this.sCount);
+            
+                    this.bestSolution = null;
+                    this.bestWeight = Infinity;
+            
+                    this.precomputeShortestPaths();
+                }
+            
+                getEdgeWeight(edge) {
+                    const cost = Number(edge.cost || 0);
+                    const time = Number(edge.time || 0);
+            
+                    if (this.mode === 'cost') return cost;
+                    if (this.mode === 'time') return time;
+                    return cost + time;
+                }
+            
+                pairIndex(si, di) {
+                    return si * this.dCount + di;
+                }
+            
+                precomputeShortestPaths() {
+                    for (let si = 0; si < this.sCount; si++) {
+                        const sourceNode = this.sourceNodeIdx[si];
+            
+                        const dist = new Float64Array(this.nCount).fill(Infinity);
+                        const costAcc = new Float64Array(this.nCount).fill(0);
+                        const timeAcc = new Float64Array(this.nCount).fill(0);
+            
+                        const parentNode = new Int32Array(this.nCount).fill(-1);
+                        const parentEdge = new Array(this.nCount).fill(null);
+            
+                        dist[sourceNode] = 0;
+            
+                        const heap = new MinHeap();
+                        heap.push({ v: sourceNode, d: 0 });
+            
+                        while (heap.size() > 0) {
+                            const cur = heap.pop();
+            
+                            if (cur.d !== dist[cur.v]) continue;
+            
+                            const outgoing = this.out[cur.v];
+            
+                            for (let i = 0; i < outgoing.length; i++) {
+                                const e = outgoing[i];
+                                const nd = cur.d + e.weight;
+            
+                                if (nd < dist[e.toIdx] - 1e-12) {
+                                    dist[e.toIdx] = nd;
+                                    costAcc[e.toIdx] = costAcc[cur.v] + e.cost;
+                                    timeAcc[e.toIdx] = timeAcc[cur.v] + e.time;
+                                    parentNode[e.toIdx] = cur.v;
+                                    parentEdge[e.toIdx] = e;
+            
+                                    heap.push({ v: e.toIdx, d: nd });
+                                }
+                            }
+                        }
+            
+                        this.parentNodeBySource[si] = parentNode;
+                        this.parentEdgeBySource[si] = parentEdge;
+            
+                        for (let di = 0; di < this.dCount; di++) {
+                            const destNode = this.destNodeIdx[di];
+                            const idx = this.pairIndex(si, di);
+            
+                            this.pathWeight[idx] = dist[destNode];
+                            this.pathCost[idx] = costAcc[destNode];
+                            this.pathTime[idx] = timeAcc[destNode];
+                        }
+                    }
+                }
+            
+                getPath(si, di) {
+                    const idx = this.pairIndex(si, di);
+            
+                    if (this.pathEdges[idx]) {
+                        return this.pathEdges[idx];
+                    }
+            
+                    if (!Number.isFinite(this.pathWeight[idx])) {
+                        return null;
+                    }
+            
+                    const sourceNode = this.sourceNodeIdx[si];
+                    const destNode = this.destNodeIdx[di];
+            
+                    const parentNode = this.parentNodeBySource[si];
+                    const parentEdge = this.parentEdgeBySource[si];
+            
+                    const path = [];
+                    let cur = destNode;
+            
+                    while (cur !== sourceNode) {
+                        const e = parentEdge[cur];
+            
+                        if (!e) {
+                            return null;
+                        }
+            
+                        path.push(e);
+                        cur = parentNode[cur];
+                    }
+            
+                    path.reverse();
+            
+                    this.pathEdges[idx] = path;
+                    return path;
+                }
+            
+                run() {
+                    if (this.sCount === 0 || this.dCount === 0) {
+                        return {
+                            paths: [],
+                            cost: 0,
+                            time: 0,
+                            weight: 0,
+                            learningTimeMs: 0,
+                            feasible: true
+                        };
+                    }
+            
+                    const learningStart = performance.now();
+            
+                    const iterations = Math.max(1, this.opts.iterations || 1);
+                    const ants = Math.max(1, this.opts.ants || 1);
+            
+                    for (let iter = 0; iter < iterations; iter++) {
+                        const iterationSolutions = [];
+            
+                        for (let k = 0; k < ants; k++) {
+                            const solution = this.constructSolution();
+            
+                            if (solution) {
+                                iterationSolutions.push(solution);
+            
+                                if (solution.weight < this.bestWeight) {
+                                    this.bestWeight = solution.weight;
+                                    this.bestSolution = solution;
+                                }
+                            }
+                        }
+            
+                        this.evaporatePheromones();
+                        this.depositPheromones(iterationSolutions, false);
+            
+                        if (this.bestSolution) {
+                            this.depositPheromones([this.bestSolution], true);
+                        }
+                    }
+            
+                    const learningTimeMs = performance.now() - learningStart;
+            
+                    const solution = this.bestSolution || this.constructGreedySolution();
+            
+                    if (!solution) {
+                        return {
+                            paths: [],
+                            cost: 0,
+                            time: 0,
+                            weight: 0,
+                            learningTimeMs,
+                            feasible: false
+                        };
+                    }
+            
+                    return {
+                        paths: solution.plan.map(item => ({
+                            path: item.edges,
+                            flow: item.flow,
+                            start: item.sourceId,
+                            end: item.destId
+                        })),
+                        cost: solution.cost,
+                        time: solution.time,
+                        weight: solution.weight,
+                        learningTimeMs,
+                        feasible: true
+                    };
+                }
+            
+                constructSolution() {
+                    const remS = Float64Array.from(this.supplyBySource);
+                    const remD = Float64Array.from(this.demandByDest);
+            
+                    let totalSupply = 0;
+                    let totalDemand = 0;
+            
+                    for (let i = 0; i < this.sCount; i++) totalSupply += remS[i];
+                    for (let i = 0; i < this.dCount; i++) totalDemand += remD[i];
+            
+                    let remaining = totalDemand;
+            
+                    const plan = [];
+            
+                    let weight = 0;
+                    let cost = 0;
+                    let time = 0;
+                    let totalFlow = 0;
+            
+                    const maxLegs = this.sCount + this.dCount + (this.opts.guardExtra || 0) + 5;
+            
+                    for (let leg = 0; leg < maxLegs && remaining > this.eps; leg++) {
+                        if (totalSupply <= this.eps) break;
+            
+                        // Выбор источника пропорционально остаточному запасу.
+                        // Без создания массивов и без filter().
+                        let si = -1;
+                        let rs = Math.random() * totalSupply;
+            
+                        for (let i = 0; i < this.sCount; i++) {
+                            if (remS[i] <= this.eps) continue;
+            
+                            rs -= remS[i];
+            
+                            if (rs <= 0) {
+                                si = i;
+                                break;
+                            }
+                        }
+            
+                        if (si < 0) {
+                            for (let i = 0; i < this.sCount; i++) {
+                                if (remS[i] > this.eps) {
+                                    si = i;
+                                    break;
+                                }
+                            }
+                        }
+            
+                        if (si < 0) break;
+            
+                        // Первый проход: считаем сумму вероятностей для потребителей.
+                        let sumProb = 0;
+                        let firstReachableDi = -1;
+            
+                        for (let di = 0; di < this.dCount; di++) {
+                            if (remD[di] <= this.eps) continue;
+            
+                            const idx = this.pairIndex(si, di);
+                            const w = this.pathWeight[idx];
+            
+                            if (!Number.isFinite(w)) continue;
+            
+                            if (firstReachableDi < 0) {
+                                firstReachableDi = di;
+                            }
+            
+                            const tau = this.pheromones[idx];
+                            const eta = 1 / (w + 1);
+                            const prob = tau * intPow(eta, this.beta) * remD[di];
+            
+                            if (Number.isFinite(prob) && prob > 0) {
+                                sumProb += prob;
+                            }
+                        }
+            
+                        if (firstReachableDi < 0) {
+                            return null;
+                        }
+            
+                        // Второй проход: выбираем потребителя.
+                        let di = -1;
+            
+                        if (sumProb > 0) {
+                            let rd = Math.random() * sumProb;
+            
+                            for (let j = 0; j < this.dCount; j++) {
+                                if (remD[j] <= this.eps) continue;
+            
+                                const idx = this.pairIndex(si, j);
+                                const w = this.pathWeight[idx];
+            
+                                if (!Number.isFinite(w)) continue;
+            
+                                const tau = this.pheromones[idx];
+                                const eta = 1 / (w + 1);
+                                const prob = tau * intPow(eta, this.beta) * remD[j];
+            
+                                if (!Number.isFinite(prob) || prob <= 0) continue;
+            
+                                rd -= prob;
+            
+                                if (rd <= 0) {
+                                    di = j;
+                                    break;
+                                }
+                            }
+                        }
+            
+                        if (di < 0) {
+                            di = firstReachableDi;
+                        }
+            
+                        const path = this.getPath(si, di);
+            
+                        if (!path) {
+                            return null;
+                        }
+            
+                        const idx = this.pairIndex(si, di);
+                        const flow = Math.min(remS[si], remD[di]);
+            
+                        if (flow <= this.eps) {
+                            return null;
+                        }
+            
+                        plan.push({
+                            si,
+                            di,
+                            sourceId: this.sourceIds[si],
+                            destId: this.destIds[di],
+                            flow,
+                            edges: path
+                        });
+            
+                        weight += flow * this.pathWeight[idx];
+                        cost += flow * this.pathCost[idx];
+                        time += flow * this.pathTime[idx];
+                        totalFlow += flow;
+            
+                        remS[si] -= flow;
+                        remD[di] -= flow;
+            
+                        totalSupply -= flow;
+                        remaining -= flow;
+                    }
+            
+                    if (remaining > this.eps) {
+                        return null;
+                    }
+            
+                    return {
+                        plan,
+                        weight,
+                        cost,
+                        time,
+                        totalFlow
+                    };
+                }
+            
+                constructGreedySolution() {
+                    const remS = Float64Array.from(this.supplyBySource);
+                    const remD = Float64Array.from(this.demandByDest);
+            
+                    let totalSupply = 0;
+                    let totalDemand = 0;
+            
+                    for (let i = 0; i < this.sCount; i++) totalSupply += remS[i];
+                    for (let i = 0; i < this.dCount; i++) totalDemand += remD[i];
+            
+                    let remaining = totalDemand;
+            
+                    const plan = [];
+            
+                    let weight = 0;
+                    let cost = 0;
+                    let time = 0;
+                    let totalFlow = 0;
+            
+                    const maxLegs = this.sCount + this.dCount + (this.opts.guardExtra || 0) + 5;
+            
+                    for (let leg = 0; leg < maxLegs && remaining > this.eps; leg++) {
+                        if (totalSupply <= this.eps) break;
+            
+                        // Берём источник с максимальным остатком.
+                        let si = -1;
+                        let bestSupply = -1;
+            
+                        for (let i = 0; i < this.sCount; i++) {
+                            if (remS[i] > bestSupply) {
+                                bestSupply = remS[i];
+                                si = i;
+                            }
+                        }
+            
+                        if (si < 0 || remS[si] <= this.eps) break;
+            
+                        // Берём ближайший достижимый потребитель.
+                        let di = -1;
+                        let bestWeight = Infinity;
+            
+                        for (let j = 0; j < this.dCount; j++) {
+                            if (remD[j] <= this.eps) continue;
+            
+                            const idx = this.pairIndex(si, j);
+                            const w = this.pathWeight[idx];
+            
+                            if (!Number.isFinite(w)) continue;
+            
+                            if (w < bestWeight) {
+                                bestWeight = w;
+                                di = j;
+                            }
+                        }
+            
+                        if (di < 0) {
+                            return null;
+                        }
+            
+                        const path = this.getPath(si, di);
+            
+                        if (!path) {
+                            return null;
+                        }
+            
+                        const idx = this.pairIndex(si, di);
+                        const flow = Math.min(remS[si], remD[di]);
+            
+                        if (flow <= this.eps) {
+                            return null;
+                        }
+            
+                        plan.push({
+                            si,
+                            di,
+                            sourceId: this.sourceIds[si],
+                            destId: this.destIds[di],
+                            flow,
+                            edges: path
+                        });
+            
+                        weight += flow * this.pathWeight[idx];
+                        cost += flow * this.pathCost[idx];
+                        time += flow * this.pathTime[idx];
+                        totalFlow += flow;
+            
+                        remS[si] -= flow;
+                        remD[di] -= flow;
+            
+                        totalSupply -= flow;
+                        remaining -= flow;
+                    }
+            
+                    if (remaining > this.eps) {
+                        return null;
+                    }
+            
+                    return {
+                        plan,
+                        weight,
+                        cost,
+                        time,
+                        totalFlow
+                    };
+                }
+            
+                evaporatePheromones() {
+                    const rho = this.rho;
+                    const keep = 1 - rho;
+                    const minP = this.minPheromone;
+                    const pheromones = this.pheromones;
+            
+                    for (let i = 0; i < pheromones.length; i++) {
+                        let value = pheromones[i] * keep;
+            
+                        if (!Number.isFinite(value) || value < minP) {
+                            value = minP;
+                        }
+            
+                        pheromones[i] = value;
+                    }
+                }
+            
+                depositPheromones(solutions, elite) {
+                    const Q = this.Q;
+                    const maxP = this.maxPheromone;
+                    const pheromones = this.pheromones;
+                    const dCount = this.dCount;
+            
+                    for (let s = 0; s < solutions.length; s++) {
+                        const solution = solutions[s];
+            
+                        if (!solution || solution.totalFlow <= this.eps) continue;
+            
+                        const base = (elite ? Q * 2 : Q) / (solution.weight + 1);
+            
+                        for (let i = 0; i < solution.plan.length; i++) {
+                            const item = solution.plan[i];
+                            const idx = item.si * dCount + item.di;
+            
+                            const share = item.flow / solution.totalFlow;
+                            const delta = base * share;
+            
+                            let value = pheromones[idx] + delta;
+            
+                            if (!Number.isFinite(value) || value > maxP) {
+                                value = maxP;
+                            }
+            
+                            pheromones[idx] = value;
+                        }
+                    }
+                }
+            }
+
+            function solveAco() {
+                const errorMsg = document.getElementById('errorMsg');
+                errorMsg.style.display = 'none';
+            
+                cyAco.edges().removeClass('active').data('activeLabel', '');
+            
+                const supplies = {};
+                const demands = {};
+            
+                let totalSupply = 0;
+                let totalDemand = 0;
+            
+                nodes.forEach(n => {
+                    if (n.type === 'source') {
+                        supplies[n.id] = n.supply || 0;
+                        totalSupply += n.supply || 0;
+                    }
+            
+                    if (n.type === 'dest') {
+                        demands[n.id] = n.demand || 0;
+                        totalDemand += n.demand || 0;
+                    }
+                });
+            
+                if (Math.abs(totalSupply - totalDemand) > 1e-9) {
+                    document.getElementById('acoCost').textContent = '—';
+                    document.getElementById('acoTime').textContent = '—';
+                    document.getElementById('acoMs').textContent = '—';
+            
+                    document.getElementById('acoRoutesList').innerHTML =
+                        `<li style="color:#ff6b6b">Баланс нарушен: Запасы ${totalSupply} ≠ Спрос ${totalDemand}</li>`;
+            
+                    return;
+                }
+            
+                if (totalSupply <= 1e-9) {
+                    document.getElementById('acoCost').textContent = '0';
+                    document.getElementById('acoTime').textContent = '0';
+                    document.getElementById('acoMs').textContent = '0.00';
+            
+                    document.getElementById('acoRoutesList').innerHTML =
+                        '<li style="color:#8892b0">Нет груза для перевозки</li>';
+            
+                    return;
+                }
+            
+                const intSettings = readIntegerSettings();
+            
+                const opts = {
+                    ants: intSettings.ants,
+                    iterations: intSettings.iterations,
+                    maxSteps: intSettings.maxSteps,
+                    pheromoneScale: intSettings.pheromoneScale,
+                    guardExtra: intSettings.guardExtra,
+                    rho: parseFloat(document.getElementById('acoRho').value) || 0.5,
+                    beta: parseFloat(document.getElementById('acoBeta').value) || 2
+                };
+            
+                const aco = new PureAntColonyTransportation(
+                    nodes,
+                    edges,
+                    supplies,
+                    demands,
+                    currentOptMode,
+                    opts
+                );
+            
+                const result = aco.run();
+            
+                const list = document.getElementById('acoRoutesList');
+                list.innerHTML = '';
+            
+                if (!result || !result.feasible) {
+                    document.getElementById('acoCost').textContent = '—';
+                    document.getElementById('acoTime').textContent = '—';
+                    document.getElementById('acoMs').textContent = result
+                        ? result.learningTimeMs.toFixed(2)
+                        : '—';
+            
+                    list.innerHTML =
+                        '<li style="color:#ff6b6b">Не удалось построить полное решение</li>';
+            
+                    return;
+                }
+            
+                result.paths.forEach(item => {
+                    item.path.forEach(e => {
+                        const cyEdge = cyAco.getElementById(e.edgeId);
+            
+                        if (cyEdge.length) {
+                            cyEdge.addClass('active');
+            
+                            const currentFlow =
+                                parseFloat(cyEdge.data('activeLabel') || '0') || 0;
+            
+                            const newFlow = currentFlow + item.flow;
+            
+                            cyEdge.data(
+                                'activeLabel',
+                                Number.isInteger(newFlow)
+                                    ? `${newFlow}`
+                                    : newFlow.toFixed(2)
+                            );
+                        }
+                    });
+                });
+            
+                list.innerHTML = `
+                    <li style="color:#64ffda">
+                        Чистый ACO: рейсов ${result.paths.length},
+                        целевой вес ${Math.round(result.weight)}
+                    </li>
+                `;
+            
+                document.getElementById('acoCost').textContent = Math.round(result.cost);
+                document.getElementById('acoTime').textContent = Math.round(result.time);
+                document.getElementById('acoMs').textContent = result.learningTimeMs.toFixed(2);
+            }
+
+            function solveAndDraw() {
+                solveExact();
+                solveAco();
+            }
+
+            document.getElementById('btnPresetSmall').addEventListener('click', () => applyPreset(presetSmall));
+            document.getElementById('btnPresetLarge').addEventListener('click', () => applyPreset(presetLarge));
+            document.getElementById('btnGenerateRandom').addEventListener('click', generateRandomGraph);
+
+            document.getElementById('btnAddNode').addEventListener('click', () => {
+                const type = document.getElementById('newNodeType').value;
+                const qty = parseFloat(document.getElementById('newNodeQty').value) || 0;
+                const newId = generateNextId(type);
+
+                const newNode = { id: newId, type };
+                if (type === 'source') newNode.supply = qty;
+                if (type === 'dest') newNode.demand = qty;
+
+                nodes.push(newNode);
+                document.getElementById('newNodeQty').value = '';
+                refreshGraphs(true);
+            });
+
+            document.getElementById('btnAddEdge').addEventListener('click', () => {
+                isAddingEdge = true;
+                selectedSourceNode = null;
+                alert('Кликните на начальный узел, затем на конечный.');
+            });
+
+            document.getElementById('btnFitExact').addEventListener('click', () => cyExact.fit());
+            document.getElementById('btnRecalcExact').addEventListener('click', () => {
+                solveExact();
+            });
+            document.getElementById('btnFitAco').addEventListener('click', () => cyAco.fit());
+            document.getElementById('btnReset').addEventListener('click', resetToDefault);
+            document.getElementById('btnRunAco').addEventListener('click', solveAco);
+
+            document.getElementById('newNodeType').addEventListener('change', toggleQtyInput);
+
+            document.getElementById('modeSelector').addEventListener('click', (e) => {
+                if (e.target.classList.contains('mode-option')) {
+                    setMode(e.target.dataset.mode);
+                }
+            });
+
+            ['acoRho', 'acoBeta'].forEach(id => {
+                document.getElementById(id).addEventListener('input', (e) => {
+                    document.getElementById(id.replace('aco', 'val')).textContent = e.target.value;
+                });
+            });
+
+            function handleNodeClick(evt) {
+                if (!isAddingEdge) return;
+
+                const node = evt.target;
+
+                if (!selectedSourceNode) {
+                    selectedSourceNode = node.id();
+                    node.style('border-color', '#fff');
+                } else {
+                    if (node.id() !== selectedSourceNode) {
+                        const exists = edges.find(e => e.from === selectedSourceNode && e.to === node.id());
+                        if (!exists) {
+                            edges.push({
+                                from: selectedSourceNode,
+                                to: node.id(),
+                                cost: 1,
+                                time: 1
+                            });
+                            refreshGraphs(true);
+                        } else {
+                            alert('Такое ребро уже существует!');
+                        }
+                    }
+
+                    cyExact.nodes().style('border-color', '');
+                    cyAco.nodes().style('border-color', '');
+
+                    cyExact.nodes().forEach(n => {
+                        const t = n.data('type');
+                        n.style('border-color', t === 'source' ? '#00d2ff' : t === 'transit' ? '#7b68ee' : '#ff6b6b');
+                    });
+
+                    cyAco.nodes().forEach(n => {
+                        const t = n.data('type');
+                        n.style('border-color', t === 'source' ? '#00d2ff' : t === 'transit' ? '#7b68ee' : '#ff6b6b');
+                    });
+
+                    isAddingEdge = false;
+                    selectedSourceNode = null;
+                }
+            }
+
+            cyExact.on('tap', 'node', handleNodeClick);
+            cyAco.on('tap', 'node', handleNodeClick);
+
+            toggleQtyInput();
+            refreshGraphs(false);
+        });
+    </script>
+</body>
+</html>
